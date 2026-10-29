@@ -1,32 +1,94 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de bichos</title>
-    <script>
-        function bichoatrue(){
-            document.getElementById("bicho_a").innerText = 'Bicho A = True';
-        }
-        function bichoafalse() {
-            document.getElementById("bicho_a").innerText = 'Bicho A = False';
-        }
-    </script>
+  <meta charset="UTF-8">
+  <title>Jogo de Vigilância e Fuga</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
+    .box { border: 1px solid #444; border-radius: 8px; max-width: 500px; margin: 20px auto; padding: 20px; background: #1e1e1e; }
+    .status { font-size: 1.2rem; margin: 15px 0; color: #ffcc00; }
+    .rooms { display: flex; justify-content: center; gap: 10px; margin-top: 15px; }
+    button { padding: 10px 16px; border: none; border-radius: 4px; background: #0070f3; color: white; cursor: pointer; font-weight: bold; }
+    button:hover { background: #0051b3; }
+    .btn-monster { background: #e00; }
+    .btn-monster:hover { background: #900; }
+  </style>
 </head>
-<body style="background-color: black;">
-    <a href="camera1a.html">Camera 1A</a>
-    <a href="camera2.html">Camera 2A</a>
-    <a href="camera3.html">Camera 3A</a>
-    <a href="camera4.html">Camera 4A</a>
-    <a href="camera4.html">Camera 5A</a>
-    <a href="camera5.html">Camera 6A</a>
-    <a href="camera6.html">Camera 7A</a>
-    <a href="camera7.html">Camera 8A</a>
-    <a href="camera8.html">Camera 9A</a>
-    <a href="camera1b.html">Camera 1B</a>
-    <br>
-    <button onclick="bichoatrue()">Ativar</button>
-    <button onclick="bichoafalse()">desativar</button>
+<body>
 
+  <h1>Vigilância e Fuga (1v1)</h1>
+
+  <div class="box">
+    <label><strong>Selecione seu papel:</strong></label><br><br>
+    <button onclick="setRole('vigilante')">Entrar como Vigilante</button>
+    <button onclick="setRole('sobrevivente')">Entrar como Sobrevivente</button>
+  </div>
+
+  <div class="box" id="game-panel" style="display:none;">
+    <h2 id="role-title"></h2>
+    <div class="status" id="game-status">Aguardando dados...</div>
+    <div class="status">Tempo restante: <span id="timer">--</span>s</div>
+
+    <div id="controls">
+      <p id="action-desc">Mudar de Sala:</p>
+      <div class="rooms">
+        <button onclick="changeRoom('camera1')">Sala 1</button>
+        <button onclick="changeRoom('camera2')">Sala 2</button>
+        <button onclick="changeRoom('camera3')">Sala 3</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configurações do Supabase
+	// Configurações do Supabase
+	const SUPABASE_URL = 'https://mnldntbbxwszsuebjyif.supabase.co';
+	const SUPABASE_KEY = 'sb_publishable_nk13l_xSqlmrDSggSrr93Q_FLJES-Ls';
+	const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let myRole = null;
+
+    function setRole(role) {
+      myRole = role;
+      document.getElementById('game-panel').style.display = 'block';
+      document.getElementById('role-title').innerText = role === 'vigilante' ? 'Papel: Vigilante (Monstro)' : 'Papel: Sobrevivente';
+      initRealtime();
+      loadState();
+    }
+
+    async function loadState() {
+      const { data } = await supabaseClient.from('game_state').select('*').eq('id', 1).single();
+      if (data) updateUI(data);
+    }
+
+    function updateUI(data) {
+      document.getElementById('timer').innerText = data.time_left;
+      
+      if (data.monster_room === data.survivor_room) {
+        document.getElementById('game-status').innerText = 'FIM DE JOGO: O monstro pegou o sobrevivente!';
+      } else {
+        if (myRole === 'vigilante') {
+          document.getElementById('game-status').innerText = `Monstro na: ${data.monster_room}`;
+        } else {
+          document.getElementById('game-status').innerText = `Você está na: ${data.survivor_room}`;
+        }
+      }
+    }
+
+    async function changeRoom(room) {
+      const payload = myRole === 'vigilante' ? { monster_room: room } : { survivor_room: room };
+      await supabaseClient.from('game_state').update(payload).eq('id', 1);
+    }
+
+    function initRealtime() {
+      supabaseClient
+        .channel('game_state_channel')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_state' }, payload => {
+          updateUI(payload.new);
+        })
+        .subscribe();
+    }
+  </script>
 </body>
 </html>
