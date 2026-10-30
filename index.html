@@ -1,122 +1,69 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jogo de Vigilância e Fuga</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jogo de Vigilância e Fuga (1v1)</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background-color: #0f1117; color: #f0f0f0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-    h1 { margin-bottom: 24px; color: #00d26a; }
-    .card { background: #1a1d26; border: 1px solid #2e3440; border-radius: 12px; width: 100%; max-width: 500px; padding: 24px; margin-bottom: 20px; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
-    .roles, .rooms { display: flex; gap: 12px; justify-content: center; margin-top: 16px; }
-    button { padding: 12px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; background: #2563eb; color: #fff; }
-    button:hover { background: #1d4ed8; }
-    .btn-monster { background: #dc2626; }
-    .btn-monster:hover { background: #b91c1c; }
-    .btn-room { background: #334155; }
-    .btn-room:hover { background: #475569; }
-    .status-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; background: #2e3440; font-size: 1.1rem; margin: 12px 0; color: #facc15; }
-    .room-display { font-size: 1.2rem; font-weight: bold; margin: 15px 0; }
-  </style>
 </head>
 <body>
+  <div class="game-container">
+    <header class="game-header">
+      <h1>Vigilância e Fuga (1v1)</h1>
+      <div id="status-bar" class="status-bar hidden">
+        <span id="role-tag" class="role-tag">-</span>
+        <span id="match-timer" class="match-timer">00:00</span>
+        <button id="btn-quit" class="btn btn-secondary">Finalizar Jogo</button>
+      </div>
+    </header>
 
-  <h1>Vigilância e Fuga (1v1)</h1>
+    <!-- Tela 1: Matchmaking / Lobby -->
+    <section id="lobby-screen" class="card">
+      <h2>Entrar na Partida</h2>
+      <p class="subtitle">Encontre um oponente em tempo real</p>
+      <div id="lobby-status" class="lobby-status">Pronto para buscar partida.</div>
+      <button id="btn-join" class="btn btn-primary">Buscar Partida</button>
+    </section>
 
-  <!-- Seleção de Papel -->
-  <div class="card" id="role-selection">
-    <h3>Escolha seu personagem:</h3>
-    <div class="roles">
-      <button class="btn-monster" onclick="selectRole('vigilante')">Vigilante (Monstro)</button>
-      <button onclick="selectRole('sobrevivente')">Sobrevivente</button>
-    </div>
+    <!-- Tela 2: Em Jogo -->
+    <section id="play-screen" class="card hidden">
+      <div class="room-info">
+        <p class="section-label">Localização Atual</p>
+        <h2 id="room-name">Carregando sala...</h2>
+        <p id="room-desc" class="room-desc"></p>
+      </div>
+
+      <!-- Alerta de perigo (Mesma sala) -->
+      <div id="alert-banner" class="alert-banner hidden">
+        <span class="pulse-icon">⚠️</span>
+        <div id="alert-text">ATENÇÃO: O Monstro está na mesma sala!</div>
+      </div>
+
+      <!-- Ações de Encontro (Matar / Fugir) -->
+      <div id="encounter-actions" class="encounter-actions hidden">
+        <button id="btn-kill" class="btn btn-danger hidden">☠️ Matar Sobrevivente</button>
+        <div id="flee-notice" class="flee-notice hidden">⚡ Rápido, escolha uma porta para fugir!</div>
+      </div>
+
+      <!-- Navegação entre Portas -->
+      <div class="navigation-box">
+        <h3>Portas Disponíveis</h3>
+        <div id="doors-container" class="doors-grid">
+          <!-- Portas renderizadas via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Tela 3: Fim de Jogo -->
+    <section id="end-screen" class="card hidden">
+      <h2 id="end-title">-</h2>
+      <p id="end-desc" class="end-desc">-</p>
+      <button id="btn-restart" class="btn btn-primary">Voltar ao Lobby</button>
+    </section>
   </div>
 
-  <!-- Painel do Jogo -->
-  <div class="card" id="game-panel" style="display: none;">
-    <h2 id="player-role-badge"></h2>
-    <div class="status-badge" id="game-message">Conectando ao jogo...</div>
-    <div class="room-display" id="position-info">Carregando salas...</div>
-
-    <p>Escolha para onde ir ou enviar o monstro:</p>
-    <div class="rooms">
-      <button class="btn-room" onclick="moveToRoom('camera1')">Sala 1</button>
-      <button class="btn-room" onclick="moveToRoom('camera2')">Sala 2</button>
-      <button class="btn-room" onclick="moveToRoom('camera3')">Sala 3</button>
-    </div>
-  </div>
-
-  <script>
-    const SUPABASE_URL = 'https://mnldntbbxwszsuebjyif.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_nk13l_xSqlmrDSggSrr93Q_FLJES-Ls';
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    let currentRole = null;
-
-    function selectRole(role) {
-      currentRole = role;
-      document.getElementById('role-selection').style.display = 'none';
-      document.getElementById('game-panel').style.display = 'block';
-      document.getElementById('player-role-badge').innerText = 
-        role === 'vigilante' ? 'Você é o Vigilante' : 'Você é o Sobrevivente';
-
-      fetchCurrentState();
-      listenToRealtime();
-    }
-
-    async function fetchCurrentState() {
-      const { data, error } = await supabaseClient
-        .from('game_state')
-        .select('*')
-        .eq('id', 1)
-        .single();
-
-      if (!error && data) {
-        renderState(data);
-      }
-    }
-
-    function renderState(state) {
-      const msg = document.getElementById('game-message');
-      const pos = document.getElementById('position-info');
-
-      // Condição de captura
-      if (state.monster_room === state.survivor_room) {
-        msg.innerText = 'O MONSTRO TE PEGOU! Fim de Jogo.';
-        msg.style.color = '#ef4444';
-      } else {
-        msg.innerText = 'Partida em andamento...';
-        msg.style.color = '#facc15';
-      }
-
-      if (currentRole === 'vigilante') {
-        pos.innerText = `O Monstro está na: ${state.monster_room.toUpperCase()}`;
-      } else {
-        pos.innerText = `Você está na: ${state.survivor_room.toUpperCase()}`;
-      }
-    }
-
-    async function moveToRoom(room) {
-      const payload = currentRole === 'vigilante' 
-        ? { monster_room: room } 
-        : { survivor_room: room };
-
-      await supabaseClient
-        .from('game_state')
-        .update(payload)
-        .eq('id', 1);
-    }
-
-    function listenToRealtime() {
-      supabaseClient
-        .channel('game-sync')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_state' }, payload => {
-          renderState(payload.new);
-        })
-        .subscribe();
-    }
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>
